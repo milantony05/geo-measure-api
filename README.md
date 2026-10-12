@@ -58,6 +58,18 @@ pytest -v
 | `DATABASE_URL` | `sqlite:///./geo.db` | SQLAlchemy database URL |
 | `MAX_UPLOAD_MB` | `50` | Maximum accepted upload size |
 
+### Run with Docker
+
+```bash
+docker compose up --build
+```
+
+The API is then available at http://localhost:8000 (docs at `/docs`). The SQLite database is stored in a named Docker volume, so data survives restarts. Stop with `docker compose down` (add `-v` to also delete the stored data).
+
+### Continuous integration
+
+GitHub Actions (`.github/workflows/ci.yml`) runs the test suite on every push and pull request, then builds the Docker image and smoke-tests the container's `/health` endpoint.
+
 ## API
 
 ### `POST /api/files/` — upload and process a file

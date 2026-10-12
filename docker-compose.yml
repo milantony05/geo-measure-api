@@ -1,0 +1,12 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      MAX_UPLOAD_MB: "50"
+    volumes:
+      - geo-data:/data      # keeps the SQLite database between restarts
+
+volumes:
+  geo-data:
