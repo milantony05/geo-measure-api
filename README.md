@@ -1,3 +1,4 @@
+![CI](https://github.com/milantony05/geo-measure-api/actions/workflows/ci.yml/badge.svg)
 # Geospatial File Measurement API
 
 A backend service that accepts a geospatial file (a zipped **Shapefile** or a **KML**), extracts every feature, and returns **area** (polygons) and **length** (lines) measurements in metric units.
