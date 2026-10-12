@@ -175,8 +175,9 @@ The API layer only handles HTTP concerns (validation, status codes). All geospat
 1. **Validate**: extension must be `.kml` or `.zip`; the body must be non-empty and within the size limit.
 2. **Save** the upload to a temporary directory under a fixed name (the user-supplied filename is never used as a path).
 3. **Create** a `files` row with status `PROCESSING`.
-4. **Read** the file with GeoPandas. For zips: safe extraction (zip-slip and size checks), then locate the `.shp`.
+4. **Read** the file with GeoPandas. KML: every layer (folder) is read. Zip: safe extraction (zip-slip and size checks), then every `.shp` is read.
 5. **Validate** the data: a CRS must be defined, there must be at least one feature, and Z values are dropped.
+5b. **Combine** the layers into one dataset. If sources use different CRSs they are reprojected to the first one's. When there is more than one source, each feature gets a `source_layer` property (folder or shapefile name) so you can tell where it came from.
 6. **Measure** every feature (below).
 7. **Store** all features and set the status to `COMPLETED` in a **single transaction**. Any failure sets `FAILED` with an error message instead.
 8. The temporary directory is deleted automatically.
@@ -215,11 +216,10 @@ The API layer only handles HTTP concerns (validation, status codes). All geospat
 | IDs | **Random UUIDs** | Sequential ids are guessable. |
 | Security | Zip-slip and zip-bomb checks, upload size limit, temp directory, no user-supplied paths | Uploaded archives are untrusted input. |
 | Endpoint style | **Plain `def` endpoints** | GeoPandas is blocking and CPU-bound; FastAPI runs sync endpoints in a thread pool so the event loop is not blocked. |
+| Multiple layers / shapefiles | **Combine all, tag with `source_layer`** | Reading only the first layer would silently drop data. Mixed CRSs are aligned before merging. `source_layer` appears only when there are several sources, so simple files keep clean output. |
 
 ## Known limitations
 
-- Only the **first `.shp`** in a zip is processed.
-- Only the **first layer** of a KML is read (KML folders map to layers).
 - One UTM zone is used per file, so measurements for files spanning several zones are less accurate.
 - `created_at` is returned without a timezone suffix because SQLite does not store timezones.
 - Processing is synchronous; very large files will hold the request open.
@@ -240,7 +240,6 @@ The API layer only handles HTTP concerns (validation, status codes). All geospat
 - Background processing (Celery/RQ + Redis) with polling or webhooks
 - PostgreSQL + PostGIS for spatial queries
 - Authentication and per-user file ownership
-- Read all KML layers and multiple shapefiles per archive
 - Pagination and filtering on the measurements endpoint
 - GeoJSON and GeoPackage upload support
 - Geodesic measurement option

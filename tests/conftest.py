@@ -5,7 +5,7 @@ from pathlib import Path
 import geopandas as gpd
 import pytest
 from fastapi.testclient import TestClient
-from shapely.geometry import Polygon
+from shapely.geometry import LineString, Polygon
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -83,6 +83,33 @@ def make_shapefile_zip(tmp_path):
         if not with_prj:
             (folder / "plots.prj").unlink()
         archive = shutil.make_archive(str(tmp_path / f"plots_{with_prj}"), "zip", folder)
+        return Path(archive).read_bytes()
+
+    return _make
+
+
+@pytest.fixture
+def make_multi_shapefile_zip(tmp_path):
+    """A zip with TWO shapefiles; the second one is stored in a different CRS."""
+
+    def _make() -> bytes:
+        folder = tmp_path / "multi_shp"
+        folder.mkdir()
+
+        plots = gpd.GeoDataFrame(
+            {"name": ["Plot 1"]},
+            geometry=[Polygon([(77.590, 12.970), (77.600, 12.970), (77.600, 12.980), (77.590, 12.980)])],
+            crs="EPSG:4326",
+        )
+        roads = gpd.GeoDataFrame(
+            {"name": ["Road 1"]},
+            geometry=[LineString([(77.590, 12.970), (77.600, 12.980)])],
+            crs="EPSG:4326",
+        ).to_crs("EPSG:32643")  # store this one in UTM metres, not degrees
+
+        plots.to_file(folder / "plots.shp")
+        roads.to_file(folder / "roads.shp")
+        archive = shutil.make_archive(str(tmp_path / "multi"), "zip", folder)
         return Path(archive).read_bytes()
 
     return _make

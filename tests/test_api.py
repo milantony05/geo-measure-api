@@ -101,3 +101,56 @@ def test_malformed_kml_fails_gracefully(client):
 def test_unknown_id_returns_404(client):
     assert client.get("/api/files/nope/").status_code == 404
     assert client.get("/api/files/nope/measurements/").status_code == 404
+
+
+MULTI_FOLDER_KML = b"""<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <Folder>
+      <name>North</name>
+      <Placemark><name>N1</name><Point><coordinates>77.590,13.050</coordinates></Point></Placemark>
+      <Placemark><name>N2</name>
+        <LineString><coordinates>77.590,13.050 77.600,13.060</coordinates></LineString>
+      </Placemark>
+    </Folder>
+    <Folder>
+      <name>South</name>
+      <Placemark><name>S1</name>
+        <Polygon><outerBoundaryIs><LinearRing><coordinates>
+          77.590,12.970 77.600,12.970 77.600,12.980 77.590,12.980 77.590,12.970
+        </coordinates></LinearRing></outerBoundaryIs></Polygon>
+      </Placemark>
+    </Folder>
+  </Document>
+</kml>
+"""
+
+
+def test_kml_with_multiple_folders_reads_every_feature(client):
+    response = upload(client, "folders.kml", MULTI_FOLDER_KML)
+    assert response.status_code == 201
+    assert response.json()["feature_count"] == 3  # not just the first folder!
+
+    features = client.get(f"/api/files/{response.json()['id']}/measurements/").json()["features"]
+    layers = {f["properties"]["Name"]: f["properties"]["source_layer"] for f in features}
+    assert layers == {"N1": "North", "N2": "North", "S1": "South"}
+
+
+def test_single_layer_file_has_no_source_layer_property(client, kml_bytes):
+    file_id = upload(client, "survey.kml", kml_bytes).json()["id"]
+    features = client.get(f"/api/files/{file_id}/measurements/").json()["features"]
+    assert all("source_layer" not in f["properties"] for f in features)
+
+
+def test_zip_with_multiple_shapefiles_in_different_crs(client, make_multi_shapefile_zip):
+    response = upload(client, "multi.zip", make_multi_shapefile_zip())
+    assert response.status_code == 201
+    assert response.json()["feature_count"] == 2
+
+    body = client.get(f"/api/files/{response.json()['id']}/measurements/").json()
+    by_type = {f["geometry_type"]: f for f in body["features"]}
+
+    assert {f["properties"]["source_layer"] for f in body["features"]} == {"plots", "roads"}
+    assert body["crs"] == "EPSG:4326"  # the UTM roads were reprojected to match plots
+    assert by_type["LineString"]["measurement"]["value"] == pytest.approx(1550.4, rel=0.01)
+    assert by_type["Polygon"]["measurement"]["value"] == pytest.approx(1_200_290, rel=0.005)

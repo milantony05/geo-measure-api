@@ -4,37 +4,50 @@ import zipfile
 from pathlib import Path
 
 import geopandas as gpd
+import pandas as pd
+from pyogrio import list_layers
 
 from app.services.errors import GeoFileError
 
 MAX_UNZIPPED_BYTES = 200 * 1024 * 1024  # 200 MB safety limit
+LAYER_COLUMN = "source_layer"
+NO_CRS_MESSAGE = (
+    "The file has no coordinate reference system (CRS). "
+    "For Shapefiles, make sure the .prj file is included in the zip."
+)
+
+# A "named frame" is (layer name, GeoDataFrame).
+NamedFrame = tuple[str, gpd.GeoDataFrame]
 
 
 def read_geofile(path: Path) -> gpd.GeoDataFrame:
-    """Read a .kml or .zip (containing a Shapefile) and return a GeoDataFrame."""
+    """Read a .kml or .zip (containing Shapefiles) into ONE GeoDataFrame."""
     path = Path(path)
     suffix = path.suffix.lower()
 
     if suffix == ".kml":
-        gdf = _read_kml(path)
+        frames = _read_kml(path)
     elif suffix == ".zip":
-        gdf = _read_zipped_shapefile(path)
+        frames = _read_zipped_shapefiles(path)
     else:
         raise GeoFileError(
             f"Unsupported file type '{suffix}'. Upload a .kml or a .zip containing a Shapefile."
         )
 
-    return _validate(gdf)
+    return _combine(frames)
 
 
-def _read_kml(path: Path) -> gpd.GeoDataFrame:
+def _read_kml(path: Path) -> list[NamedFrame]:
+    """Read every layer (KML <Folder>) in the file."""
     try:
-        return gpd.read_file(path)
+        layer_names = [name for name, _ in list_layers(path)]
+        return [(name, gpd.read_file(path, layer=name)) for name in layer_names]
     except Exception as exc:
         raise GeoFileError(f"Could not read KML file: {exc}") from exc
 
 
-def _read_zipped_shapefile(path: Path) -> gpd.GeoDataFrame:
+def _read_zipped_shapefiles(path: Path) -> list[NamedFrame]:
+    """Read every .shp inside the zip."""
     # TemporaryDirectory is deleted automatically when the `with` block ends.
     with tempfile.TemporaryDirectory() as tmp:
         tmp_dir = Path(tmp)
@@ -54,10 +67,13 @@ def _read_zipped_shapefile(path: Path) -> gpd.GeoDataFrame:
         if not shp_files:
             raise GeoFileError("The zip archive does not contain a .shp file.")
 
-        try:
-            return gpd.read_file(shp_files[0])
-        except Exception as exc:
-            raise GeoFileError(f"Could not read Shapefile: {exc}") from exc
+        frames: list[NamedFrame] = []
+        for shp in shp_files:
+            try:
+                frames.append((shp.stem, gpd.read_file(shp)))
+            except Exception as exc:
+                raise GeoFileError(f"Could not read Shapefile '{shp.name}': {exc}") from exc
+        return frames
 
 
 def _safe_extract(zf: zipfile.ZipFile, dest: Path) -> None:
@@ -76,14 +92,26 @@ def _safe_extract(zf: zipfile.ZipFile, dest: Path) -> None:
     zf.extractall(dest)
 
 
-def _validate(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    if gdf.crs is None:
-        raise GeoFileError(
-            "The file has no coordinate reference system (CRS). "
-            "For Shapefiles, make sure the .prj file is included in the zip."
-        )
-    if len(gdf) == 0:
+def _combine(named_frames: list[NamedFrame]) -> gpd.GeoDataFrame:
+    """Merge layers into one GeoDataFrame in a single, consistent CRS."""
+    non_empty = [(name, gdf) for name, gdf in named_frames if len(gdf) > 0]
+    if not non_empty:
         raise GeoFileError("The file contains no features.")
+    if any(gdf.crs is None for _, gdf in non_empty):
+        raise GeoFileError(NO_CRS_MESSAGE)
+
+    target_crs = non_empty[0][1].crs
+    several_sources = len(non_empty) > 1
+
+    aligned = []
+    for name, gdf in non_empty:
+        if gdf.crs != target_crs:
+            gdf = gdf.to_crs(target_crs)  # never mix coordinate systems
+        if several_sources:
+            gdf = gdf.assign(**{LAYER_COLUMN: name})  # remember where it came from
+        aligned.append(gdf)
+
+    combined = pd.concat(aligned, ignore_index=True)
 
     # KML often has a Z (altitude) value. Area/length are 2D, so drop Z.
-    return gdf.set_geometry(gdf.geometry.force_2d())
+    return combined.set_geometry(combined.geometry.force_2d())
