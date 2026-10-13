@@ -3,7 +3,7 @@ import logging
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from app import crud
@@ -11,9 +11,10 @@ from app.config import MAX_UPLOAD_BYTES, MAX_UPLOAD_MB
 from app.db import get_db
 from app.models import Feature, FileStatus
 from app.schemas import FeatureOut, FileInfo, Measurement, MeasurementsResponse
-from app.services.errors import GeoFileError
+from app.services.errors import GeoFileError, ReprojectionError
 from app.services.measure import measure_features
 from app.services.reader import read_geofile
+from app.services.reproject import make_reprojector
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,7 @@ def _save_upload(upload: UploadFile, dest: Path) -> None:
         raise HTTPException(400, "Uploaded file is empty.")
 
 
-def _to_feature_out(f: Feature) -> FeatureOut:
+def _to_feature_out(f: Feature, reproject, output_crs: str) -> FeatureOut:
     measurement = None
     if f.measurement_type is not None:
         measurement = Measurement(
@@ -45,8 +46,8 @@ def _to_feature_out(f: Feature) -> FeatureOut:
     return FeatureOut(
         feature_index=f.feature_index,
         geometry_type=f.geometry_type,
-        geometry=f.geometry,
-        crs=f.crs,
+        geometry=reproject(f.geometry),
+        crs=output_crs,  # describes the coordinates in `geometry`
         properties=f.properties,
         measurement=measurement,
         note=f.note,
@@ -100,7 +101,15 @@ def get_file_info(file_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/{file_id}/measurements/", response_model=MeasurementsResponse)
-def get_measurements(file_id: str, db: Session = Depends(get_db)):
+def get_measurements(
+    file_id: str,
+    crs: str | None = Query(
+        default=None,
+        description="Return geometries in this CRS, e.g. EPSG:4326. "
+        "Default: the file's original CRS. Measurements are not affected.",
+    ),
+    db: Session = Depends(get_db),
+):
     """Return every feature in the file with its measurement."""
     record = crud.get_file(db, file_id)
     if record is None:
@@ -108,11 +117,19 @@ def get_measurements(file_id: str, db: Session = Depends(get_db)):
     if record.status != FileStatus.COMPLETED.value:
         raise HTTPException(409, f"File is not ready (status: {record.status}). {record.error or ''}".strip())
 
+    if crs is None:
+        reproject, output_crs = (lambda geometry: geometry), record.crs
+    else:
+        try:
+            reproject, output_crs = make_reprojector(record.crs, crs)
+        except ReprojectionError as exc:
+            raise HTTPException(400, str(exc))
+
     return MeasurementsResponse(
         id=record.id,
         filename=record.filename,
         crs=record.crs,
         projected_crs=record.projected_crs,
         feature_count=record.feature_count,
-        features=[_to_feature_out(f) for f in record.features],
+        features=[_to_feature_out(f, reproject, output_crs) for f in record.features],
     )

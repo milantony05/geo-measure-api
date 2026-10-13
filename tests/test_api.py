@@ -154,3 +154,22 @@ def test_zip_with_multiple_shapefiles_in_different_crs(client, make_multi_shapef
     assert body["crs"] == "EPSG:4326"  # the UTM roads were reprojected to match plots
     assert by_type["LineString"]["measurement"]["value"] == pytest.approx(1550.4, rel=0.01)
     assert by_type["Polygon"]["measurement"]["value"] == pytest.approx(1_200_290, rel=0.005)
+
+
+def test_measurements_can_be_returned_in_another_crs(client, kml_bytes):
+    file_id = upload(client, "survey.kml", kml_bytes).json()["id"]
+    body = client.get(f"/api/files/{file_id}/measurements/?crs=EPSG:3857").json()
+
+    by_type = {f["geometry_type"]: f for f in body["features"]}
+    point = by_type["Point"]
+    assert point["crs"] == "EPSG:3857"
+    assert abs(point["geometry"]["coordinates"][0]) > 1_000_000  # metres, not degrees
+
+    # Measurements must not change just because the geometry was reprojected.
+    assert by_type["Polygon"]["measurement"]["value"] == pytest.approx(1_200_290, rel=0.005)
+
+
+def test_measurements_with_invalid_crs_returns_400(client, kml_bytes):
+    file_id = upload(client, "survey.kml", kml_bytes).json()["id"]
+    response = client.get(f"/api/files/{file_id}/measurements/?crs=nonsense")
+    assert response.status_code == 400

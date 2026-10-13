@@ -147,6 +147,12 @@ Response `200 OK` (shortened to two features; `properties` trimmed):
 - `geometry` is GeoJSON in the file's **original** CRS (`crs` field).
 - `measurement` is `null` for points and for unsupported geometries; `note` explains why when relevant.
 
+**Optional query parameter `crs`**: return geometries reprojected to another CRS, e.g. `?crs=EPSG:4326`. Useful for web maps, which expect longitude/latitude. Measurements are unaffected (they are always computed in a projected, metric CRS). An unknown CRS returns `400`. Each feature's `crs` field describes the coordinates in its `geometry`.
+
+```bash
+curl "http://127.0.0.1:8000/api/files/<id>/measurements/?crs=EPSG:4326"
+```
+
 ### Error responses
 
 | Status | When |
@@ -236,6 +242,7 @@ The API layer only handles HTTP concerns (validation, status codes). All geospat
 - One UTM zone is used per file, so measurements for files spanning several zones are less accurate.
 - `created_at` is returned without a timezone suffix because SQLite does not store timezones.
 - Processing is synchronous; very large files will hold the request open.
+- Reprojecting output with `?crs=` requires the file's CRS to be identifiable (e.g. an EPSG code); custom CRS definitions without an authority code cannot be reprojected.
 
 ## Learning and future scope
 

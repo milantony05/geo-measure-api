@@ -1,11 +1,13 @@
 """Unit tests for the CRS + measurement logic (no web server involved)."""
 import geopandas as gpd
 import pytest
-from pyproj import Geod
+from pyproj import Geod, Transformer
 from shapely.geometry import GeometryCollection, MultiPolygon, Point, Polygon
 
 from app.services.crs import crs_label, pick_projected_crs
 from app.services.measure import measure_features
+from app.services.errors import ReprojectionError
+from app.services.reproject import make_reprojector
 
 
 def square(lon: float, lat: float, size: float = 0.01) -> Polygon:
@@ -84,3 +86,30 @@ def test_original_geometry_and_crs_are_returned_not_projected():
     feature = result.features[0]
     assert feature["crs"] == "EPSG:4326"
     assert feature["geometry"]["coordinates"] == [77.595, 12.975]
+
+
+def test_reproject_utm_back_to_wgs84():
+    to_utm = Transformer.from_crs("EPSG:4326", "EPSG:32643", always_xy=True)
+    x, y = to_utm.transform(77.595, 12.975)
+
+    reproject, label = make_reprojector("EPSG:32643", "EPSG:4326")
+    result = reproject({"type": "Point", "coordinates": [x, y]})
+
+    assert label == "EPSG:4326"
+    assert result["coordinates"] == pytest.approx((77.595, 12.975), abs=1e-6)
+
+
+def test_reproject_to_same_crs_returns_geometry_unchanged():
+    reproject, _ = make_reprojector("EPSG:4326", "EPSG:4326")
+    geometry = {"type": "Point", "coordinates": [77.595, 12.975]}
+    assert reproject(geometry) is geometry
+
+
+def test_reproject_handles_missing_geometry():
+    reproject, _ = make_reprojector("EPSG:32643", "EPSG:4326")
+    assert reproject(None) is None
+
+
+def test_reproject_with_invalid_crs_raises():
+    with pytest.raises(ReprojectionError):
+        make_reprojector("EPSG:4326", "not-a-crs")
