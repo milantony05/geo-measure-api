@@ -8,6 +8,8 @@ Built with **FastAPI**, **GeoPandas / Shapely / PyProj**, and **SQLite (SQLAlche
 
 **Contents:** [Features](#features) · [Getting started](#getting-started) · [Development](#development) · [API](#api) · [Architecture](#architecture) · [Design decisions](#design-decisions) · [Known limitations](#known-limitations) · [Learning and future scope](#learning-and-future-scope)
 
+<img width="707" height="470" alt="demo_page" src="https://github.com/user-attachments/assets/4967f7f2-c99d-4300-9b06-de0768ae2dfe" />
+
 ## Features
 
 - Upload a `.kml` or a `.zip` containing one or more Shapefiles
