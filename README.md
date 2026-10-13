@@ -6,9 +6,9 @@ A backend service that accepts a geospatial file (a zipped **Shapefile** or a **
 
 Built with **FastAPI**, **GeoPandas / Shapely / PyProj**, and **SQLite (SQLAlchemy)**. Includes a small map-based demo page.
 
-**Contents:** [Features](#features) · [Getting started](#getting-started) · [Development](#development) · [API](#api) · [Architecture](#architecture) · [Design decisions](#design-decisions) · [Known limitations](#known-limitations) · [Learning and future scope](#learning-and-future-scope)
+![Demo page: summary cards, a map of the uploaded features and a measurements table](docs/demo.png)
 
-<img width="707" height="470" alt="demo_page" src="https://github.com/user-attachments/assets/4967f7f2-c99d-4300-9b06-de0768ae2dfe" />
+**Contents:** [Features](#features) · [Getting started](#getting-started) · [Development](#development) · [API](#api) · [Architecture](#architecture) · [Design decisions](#design-decisions) · [Known limitations](#known-limitations) · [Learning and future scope](#learning-and-future-scope)
 
 ## Features
 
@@ -19,7 +19,8 @@ Built with **FastAPI**, **GeoPandas / Shapely / PyProj**, and **SQLite (SQLAlche
 - Unsupported or missing geometries are reported with a note instead of crashing the request
 - Processing status tracking (`PROCESSING` → `COMPLETED` / `FAILED`) with stored error messages
 - Optional reprojection of returned geometries (`?crs=EPSG:4326`), e.g. for web maps
-- Demo web page with a map and a measurements table
+- CSV export of the measurements (`GET /api/files/{id}/measurements.csv`), safe to open in Excel
+- Demo web page: drag-and-drop upload, summary cards, map, measurements table and CSV download
 - Interactive API docs at `/docs` (Swagger UI)
 - Automated test suite (pytest) and CI (GitHub Actions)
 
@@ -70,23 +71,24 @@ Once the server is running (locally at http://127.0.0.1:8000, or with Docker at 
 
 | URL | What it is |
 |---|---|
-| `/` | **Demo page**: upload a file, see features on a map and in a table |
+| `/` | **Demo page**: upload a file, see features on a map and in a table, export CSV |
 | `/docs` | Interactive API documentation (Swagger UI) |
 | `/health` | Health check |
 
-**Sample files** are in `sample_data/` (regenerate them with `python scripts/make_samples.py`):
+**Sample files** are in `sample_data/` (regenerate them with `python scripts/make_samples.py` and `python scripts/make_demo_kml.py`):
 
 | File | Contents |
 |---|---|
+| `demo_survey.kml` | A richer demo: 3 polygons, 2 lines and 3 points near Bengaluru |
 | `sample.kml` | A polygon, a line and a point near Bengaluru (EPSG:4326) |
 | `sample_shapefile.zip` | Two polygons, stored in EPSG:4326 |
 | `sample_shapefile_utm.zip` | The same polygons stored in EPSG:32643 (UTM, metres) — shows that reprojection puts them in the right place on the map |
 
 ### Web demo
 
-The demo page lets you upload a KML or zipped Shapefile and shows the features on a map (Leaflet + OpenStreetMap) next to a table of measurements. Click a table row to zoom to that feature, or a shape on the map for its popup.
+Open http://127.0.0.1:8000/ for a small demo page: drag and drop a KML or zipped Shapefile to see summary statistics, the features on a map (Leaflet + OpenStreetMap) and a table of measurements. Click a table row (or a shape on the map) to select it, and use **Export CSV** to download the measurements. The page supports light and dark mode and works on narrow screens.
 
-It is intentionally a single static page (plain HTML/CSS/JS, no build step) served by FastAPI, and it only uses the public API (`POST /api/files/` and `GET /api/files/{id}/measurements/?crs=EPSG:4326`). Leaflet is loaded from a CDN, so the map needs an internet connection. User-controlled text (feature names, properties) is inserted with `textContent`, never as HTML.
+It is intentionally a single static page (plain HTML/CSS/JS, no build step) served by FastAPI, and it only uses the public API (`POST /api/files/`, `GET /api/files/{id}/measurements/?crs=EPSG:4326` and the CSV endpoint). Leaflet is loaded from a CDN, so the map needs an internet connection. User-controlled text (feature names, properties) is inserted with `textContent`, never as HTML.
 
 ## Development
 
@@ -193,13 +195,21 @@ Response `200 OK` (shortened to two features; `properties` trimmed):
 curl "http://127.0.0.1:8000/api/files/<id>/measurements/?crs=EPSG:4326"
 ```
 
+### `GET /api/files/{id}/measurements.csv` — export as CSV
+
+```bash
+curl -OJ http://127.0.0.1:8000/api/files/<id>/measurements.csv
+```
+
+Downloads one row per feature with the columns `feature_index, name, geometry_type, measurement_type, measurement_value, measurement_unit, source_layer, note`. The file is UTF-8 with a byte-order mark so Excel displays non-English names correctly. Text values that start with `=`, `+`, `-` or `@` are prefixed with `'` to prevent spreadsheet formula injection. Returns `404` / `409` like the measurements endpoint.
+
 ### Error responses
 
 | Status | When |
 |---|---|
 | `400` | Unsupported file extension, empty file, or an unknown `crs` query value |
 | `404` | Unknown file id |
-| `409` | Measurements requested for a file that is not `COMPLETED` |
+| `409` | Measurements (or CSV) requested for a file that is not `COMPLETED` |
 | `413` | Upload larger than `MAX_UPLOAD_MB` |
 | `422` | File could not be read (corrupt zip, no `.shp`, missing CRS, malformed KML). The failure is stored: `detail.file_id` can be used with `GET /api/files/{id}/` to see `status: FAILED` and the error message |
 | `500` | Unexpected server error (also recorded as `FAILED`) |
@@ -223,11 +233,13 @@ app/
 │   ├── reader.py      # KML / zipped Shapefiles -> one GeoDataFrame
 │   ├── crs.py         # Projected CRS selection
 │   ├── measure.py     # Feature extraction + measurements
-│   └── reproject.py   # GeoJSON reprojection for the ?crs= parameter
+│   ├── reproject.py   # GeoJSON reprojection for the ?crs= parameter
+│   └── export.py      # CSV export (with formula-injection protection)
 └── static/            # Demo page (index.html, app.js, style.css)
 tests/                 # pytest: service-level and API-level tests
-scripts/               # Sample data generator and exploration helpers
+scripts/               # Sample data generators and exploration helpers
 sample_data/           # Example KML / Shapefile inputs
+docs/                  # README screenshot
 Dockerfile, docker-compose.yml
 .github/workflows/ci.yml
 ```
@@ -275,11 +287,12 @@ The API layer only handles HTTP concerns (validation, status codes). All geospat
 | Original vs projected geometry in responses | **Original by default, `?crs=` on request** | GeoJSON consumers expect lon/lat, and the projection used for measuring is an internal detail that differs per file. Letting the server reproject on request means clients (like the demo page) need no GIS library. |
 | Unsupported geometries | **Reported with a `note`** | Failing the whole upload because of one feature would make files unusable. |
 | Multiple layers / shapefiles | **Combine all, tag with `source_layer`** | Reading only the first layer would silently drop data. Mixed CRSs are aligned before merging. `source_layer` appears only when there are several sources, so simple files keep clean output. |
+| CSV export | **Server-side endpoint** | Keeps the export part of the public API (scriptable with `curl`, testable) instead of being browser-only. User-supplied text is neutralised against spreadsheet formula injection, and the file carries a UTF-8 BOM so Excel reads it correctly. |
 | Processing model | **Synchronous, with status lifecycle** | Fine for typical survey files. The `PROCESSING/COMPLETED/FAILED` status and stored errors make it straightforward to move to a background worker later. |
 | Storage | **SQLite + SQLAlchemy; geometry as GeoJSON in a JSON column** | PostgreSQL/PostGIS would enable spatial queries but adds setup friction, and this service never queries spatially. `DATABASE_URL` makes switching databases easy. |
 | Atomic saves | **One transaction for all features + final status** | A file can never be `COMPLETED` with missing features. |
 | IDs | **Random UUIDs** | Sequential ids are guessable. |
-| Security | Zip-slip and zip-bomb checks, upload size limit, temp directory, no user-supplied paths | Uploaded archives are untrusted input. |
+| Security | Zip-slip and zip-bomb checks, upload size limit, temp directory, no user-supplied paths, no HTML injection in the UI | Uploaded archives and the text inside them are untrusted input. |
 | Endpoint style | **Plain `def` endpoints** | GeoPandas is blocking and CPU-bound; FastAPI runs sync endpoints in a thread pool so the event loop is not blocked. |
 | Frontend | **One static page, no framework** | The task is a backend service; a build-less page keeps the demo easy to run and fully reviewable, and exercises the public API like any other client. |
 
