@@ -1,5 +1,7 @@
 """End-to-end tests: real HTTP requests against the app."""
 import pytest
+import csv
+import io
 
 
 def upload(client, name: str, content: bytes):
@@ -185,3 +187,45 @@ def test_frontend_page_is_served(client):
 def test_static_assets_are_served(client):
     assert client.get("/static/app.js").status_code == 200
     assert client.get("/static/style.css").status_code == 200
+
+
+def read_csv_rows(response) -> list[dict]:
+    text = response.content.decode("utf-8-sig")
+    return list(csv.DictReader(io.StringIO(text)))
+
+
+def test_export_measurements_csv(client, kml_bytes):
+    file_id = upload(client, "survey.kml", kml_bytes).json()["id"]
+    response = client.get(f"/api/files/{file_id}/measurements.csv")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    assert 'attachment; filename="survey_measurements.csv"' in response.headers["content-disposition"]
+
+    rows = read_csv_rows(response)
+    assert len(rows) == 3
+    by_type = {row["geometry_type"]: row for row in rows}
+    assert by_type["Polygon"]["name"] == "Plot A"
+    assert by_type["Polygon"]["measurement_unit"] == "m2"
+    assert float(by_type["Polygon"]["measurement_value"]) == pytest.approx(1_200_290, rel=0.005)
+    assert by_type["Point"]["measurement_value"] == ""
+
+
+def test_csv_export_neutralises_spreadsheet_formulas(client):
+    kml = b"""<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
+  <Placemark><name>=1+1</name><Point><coordinates>77.59,12.97</coordinates></Point></Placemark>
+</Document></kml>"""
+    file_id = upload(client, "evil.kml", kml).json()["id"]
+    rows = read_csv_rows(client.get(f"/api/files/{file_id}/measurements.csv"))
+    assert rows[0]["name"] == "'=1+1"
+
+
+def test_csv_export_unknown_id_returns_404(client):
+    assert client.get("/api/files/nope/measurements.csv").status_code == 404
+
+
+def test_csv_export_of_failed_file_returns_409(client):
+    detail = upload(client, "fake.zip", b"nope").json()["detail"]
+    response = client.get(f"/api/files/{detail['file_id']}/measurements.csv")
+    assert response.status_code == 409

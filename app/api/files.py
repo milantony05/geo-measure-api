@@ -3,18 +3,19 @@ import logging
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, UploadFile
 from sqlalchemy.orm import Session
 
 from app import crud
 from app.config import MAX_UPLOAD_BYTES, MAX_UPLOAD_MB
 from app.db import get_db
-from app.models import Feature, FileStatus
+from app.models import Feature, FileStatus, UploadedFile
 from app.schemas import FeatureOut, FileInfo, Measurement, MeasurementsResponse
 from app.services.errors import GeoFileError, ReprojectionError
 from app.services.measure import measure_features
 from app.services.reader import read_geofile
 from app.services.reproject import make_reprojector
+from app.services.export import csv_filename, measurements_to_csv
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +92,15 @@ def upload_file(file: UploadFile, db: Session = Depends(get_db)):
     return record
 
 
+def _get_completed_file(db: Session, file_id: str) -> UploadedFile:
+    record = crud.get_file(db, file_id)
+    if record is None:
+        raise HTTPException(404, "File not found.")
+    if record.status != FileStatus.COMPLETED.value:
+        raise HTTPException(409, f"File is not ready (status: {record.status}). {record.error or ''}".strip())
+    return record
+
+
 @router.get("/{file_id}/", response_model=FileInfo)
 def get_file_info(file_id: str, db: Session = Depends(get_db)):
     """Return basic information about an uploaded file."""
@@ -111,11 +121,7 @@ def get_measurements(
     db: Session = Depends(get_db),
 ):
     """Return every feature in the file with its measurement."""
-    record = crud.get_file(db, file_id)
-    if record is None:
-        raise HTTPException(404, "File not found.")
-    if record.status != FileStatus.COMPLETED.value:
-        raise HTTPException(409, f"File is not ready (status: {record.status}). {record.error or ''}".strip())
+    record = _get_completed_file(db, file_id)
 
     if crs is None:
         reproject, output_crs = (lambda geometry: geometry), record.crs
@@ -132,4 +138,17 @@ def get_measurements(
         projected_crs=record.projected_crs,
         feature_count=record.feature_count,
         features=[_to_feature_out(f, reproject, output_crs) for f in record.features],
+    )
+
+
+@router.get("/{file_id}/measurements.csv", response_class=Response)
+def export_measurements_csv(file_id: str, db: Session = Depends(get_db)):
+    """Download the measurements as a CSV file."""
+    record = _get_completed_file(db, file_id)
+    # "utf-8-sig" adds a byte-order mark so Excel detects UTF-8 and shows non-English names correctly.
+    content = measurements_to_csv(record.features).encode("utf-8-sig")
+    return Response(
+        content=content,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{csv_filename(record.filename)}"'},
     )
