@@ -1,10 +1,15 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app import models  # noqa: F401  (importing registers the tables)
 from app.api import files
 from app.db import Base, engine
+
+STATIC_DIR = Path(__file__).parent / "static"
 
 
 @asynccontextmanager
@@ -21,6 +26,13 @@ app = FastAPI(
 )
 
 app.include_router(files.router)
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+@app.get("/", include_in_schema=False)
+def index():
+    """The demo web page."""
+    return FileResponse(STATIC_DIR / "index.html")
 
 
 @app.get("/health")

@@ -57,3 +57,10 @@ shutil.make_archive(str(OUT / "sample_shapefile"), "zip", shp_dir)
 shutil.rmtree(shp_dir)
 
 print("Created:", [p.name for p in OUT.iterdir()])
+
+# 3. Shapefile stored in a projected CRS (UTM metres, not degrees)
+utm_dir = OUT / "shp_utm_tmp"
+utm_dir.mkdir(exist_ok=True)
+gdf.to_crs("EPSG:32643").to_file(utm_dir / "plots_utm.shp")
+shutil.make_archive(str(OUT / "sample_shapefile_utm"), "zip", utm_dir)
+shutil.rmtree(utm_dir)

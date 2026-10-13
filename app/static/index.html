@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Geospatial File Measurement</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>Geospatial File Measurement</h1>
+    <p>Upload a KML or a zipped Shapefile to see its features and their measurements.</p>
+  </header>
+
+  <main>
+    <section class="card">
+      <form id="upload-form">
+        <input type="file" id="file-input" accept=".kml,.zip" required>
+        <button type="submit" id="upload-btn">Upload &amp; measure</button>
+      </form>
+      <p id="message" role="status"></p>
+    </section>
+
+    <section id="results" hidden>
+      <dl id="summary" class="card summary"></dl>
+
+      <div class="split">
+        <div id="map" class="card" aria-label="Map of the uploaded features"></div>
+        <div class="card table-wrap">
+          <table id="features-table">
+            <thead>
+              <tr><th>#</th><th>Name</th><th>Type</th><th>Measurement</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

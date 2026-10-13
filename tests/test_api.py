@@ -173,3 +173,15 @@ def test_measurements_with_invalid_crs_returns_400(client, kml_bytes):
     file_id = upload(client, "survey.kml", kml_bytes).json()["id"]
     response = client.get(f"/api/files/{file_id}/measurements/?crs=nonsense")
     assert response.status_code == 400
+
+
+def test_frontend_page_is_served(client):
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    assert "Geospatial File Measurement" in response.text
+
+
+def test_static_assets_are_served(client):
+    assert client.get("/static/app.js").status_code == 200
+    assert client.get("/static/style.css").status_code == 200
