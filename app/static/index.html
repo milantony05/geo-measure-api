@@ -4,36 +4,73 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Geospatial File Measurement</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗺️</text></svg>">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <header>
-    <h1>Geospatial File Measurement</h1>
-    <p>Upload a KML or a zipped Shapefile to see its features and their measurements.</p>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7l8-4 8 4-8 4-8-4z"/><path d="M4 12l8 4 8-4"/><path d="M4 17l8 4 8-4"/></svg>
+        </span>
+        <div>
+          <h1>Geo Measure</h1>
+          <p>Measure the features in a KML or Shapefile</p>
+        </div>
+      </div>
+      <a class="text-link" href="/docs">API docs</a>
+    </div>
   </header>
 
-  <main>
+  <main class="container">
     <section class="card">
-      <form id="upload-form">
-        <input type="file" id="file-input" accept=".kml,.zip" required>
-        <button type="submit" id="upload-btn">Upload &amp; measure</button>
-      </form>
-      <p id="message" role="status"></p>
+      <label id="dropzone" class="dropzone" for="file-input">
+        <input type="file" id="file-input" accept=".kml,.zip">
+        <span class="dz-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+        </span>
+        <span class="spinner" aria-hidden="true"></span>
+        <span class="dz-title dz-idle">Drop a file here, or <u>browse</u></span>
+        <span class="dz-title dz-busy">Processing&hellip;</span>
+        <span class="dz-hint">KML, or a ZIP containing a Shapefile</span>
+      </label>
+      <p id="message" role="status" aria-live="polite"></p>
     </section>
 
     <section id="results" hidden>
-      <dl id="summary" class="card summary"></dl>
+      <div id="stats" class="stats"></div>
 
       <div class="split">
-        <div id="map" class="card" aria-label="Map of the uploaded features"></div>
-        <div class="card table-wrap">
-          <table id="features-table">
-            <thead>
-              <tr><th>#</th><th>Name</th><th>Type</th><th>Measurement</th></tr>
-            </thead>
-            <tbody></tbody>
-          </table>
+        <div class="card panel">
+          <div class="panel-head">
+            <h2>Map</h2>
+            <ul class="legend" aria-label="Map legend">
+              <li><span class="dot" data-kind="area"></span>Polygon</li>
+              <li><span class="dot" data-kind="length"></span>Line</li>
+              <li><span class="dot" data-kind="point"></span>Point</li>
+            </ul>
+          </div>
+          <div id="map" role="region" aria-label="Map of the uploaded features"></div>
+        </div>
+
+        <div class="card panel">
+          <div class="panel-head">
+            <h2>Features</h2>
+            <a id="export-btn" class="button" href="#" download>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12"/><path d="M7 11l5 5 5-5"/><path d="M4 20h16"/></svg>
+              Export CSV
+            </a>
+          </div>
+          <div class="table-wrap">
+            <table id="features-table">
+              <thead>
+                <tr><th>#</th><th>Name</th><th>Type</th><th class="num">Measurement</th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
         </div>
       </div>
     </section>

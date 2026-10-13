@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>Demo survey</name>
+<Placemark><name>North field</name><Polygon><outerBoundaryIs><LinearRing><coordinates>77.592,12.986 77.599,12.988 77.601,12.983 77.595,12.98 77.592,12.986</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>
+<Placemark><name>Reservoir</name><Polygon><outerBoundaryIs><LinearRing><coordinates>77.604,12.976 77.61,12.978 77.613,12.973 77.607,12.97 77.603,12.972 77.604,12.976</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>
+<Placemark><name>South plot</name><Polygon><outerBoundaryIs><LinearRing><coordinates>77.588,12.97 77.594,12.971 77.595,12.965 77.589,12.964 77.588,12.97</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>
+<Placemark><name>Access road</name><LineString><coordinates>77.585,12.978 77.593,12.977 77.6,12.976 77.6035,12.9745</coordinates></LineString></Placemark>
+<Placemark><name>Pipeline</name><LineString><coordinates>77.596,12.98 77.5985,12.974 77.5955,12.97</coordinates></LineString></Placemark>
+<Placemark><name>Main gate</name><Point><coordinates>77.585,12.978</coordinates></Point></Placemark>
+<Placemark><name>Pump house</name><Point><coordinates>77.6035,12.9745</coordinates></Point></Placemark>
+<Placemark><name>Survey marker</name><Point><coordinates>77.592,12.986</coordinates></Point></Placemark>
+</Document></kml>
