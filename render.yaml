@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: geo-measure-api
+    runtime: docker
+    plan: free
+    region: singapore
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: PORT
+        value: "10000"
+      - key: MAX_UPLOAD_MB
+        value: "10"
