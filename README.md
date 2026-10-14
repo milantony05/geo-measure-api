@@ -6,9 +6,23 @@ A backend service that accepts a geospatial file (a zipped **Shapefile** or a **
 
 Built with **FastAPI**, **GeoPandas / Shapely / PyProj**, and **SQLite (SQLAlchemy)**. Includes a small map-based demo page.
 
+**Live demo: https://geo-measure-api-milan.onrender.com** · **API docs: https://geo-measure-api-milan.onrender.com/docs**
+
 ![Demo page: summary cards, a map of the uploaded features and a measurements table](docs/demo.png)
 
-**Contents:** [Features](#features) · [Getting started](#getting-started) · [Development](#development) · [API](#api) · [Architecture](#architecture) · [Design decisions](#design-decisions) · [Known limitations](#known-limitations) · [Learning and future scope](#learning-and-future-scope)
+**Contents:** [Live demo](#live-demo) · [Features](#features) · [Getting started](#getting-started) · [Development](#development) · [API](#api) · [Architecture](#architecture) · [Design decisions](#design-decisions) · [Known limitations](#known-limitations) · [Learning and future scope](#learning-and-future-scope)
+
+## Live demo
+
+**https://geo-measure-api-milan.onrender.com**
+
+Upload a KML or a zipped Shapefile on the home page (sample files are in [`sample_data/`](sample_data/), for example `demo_survey.kml`), or try the endpoints at [`/docs`](https://geo-measure-api-milan.onrender.com/docs).
+
+Hosted on Render's free tier, so please note:
+
+- The service sleeps after ~15 minutes of inactivity; the **first request can take about a minute** to wake it up.
+- Storage is ephemeral: uploaded data and the SQLite database are wiped when the service restarts or sleeps.
+- Uploads are limited to 10 MB. Please don't upload sensitive data.
 
 ## Features
 
@@ -22,7 +36,7 @@ Built with **FastAPI**, **GeoPandas / Shapely / PyProj**, and **SQLite (SQLAlche
 - CSV export of the measurements (`GET /api/files/{id}/measurements.csv`), safe to open in Excel
 - Demo web page: drag-and-drop upload, summary cards, map, measurements table and CSV download
 - Interactive API docs at `/docs` (Swagger UI)
-- Automated test suite (pytest) and CI (GitHub Actions)
+- Automated test suite (pytest), CI (GitHub Actions) and Docker support
 
 ## Getting started
 
@@ -65,9 +79,21 @@ docker compose up --build
 
 The SQLite database is stored in a named Docker volume, so data survives restarts. Stop with `docker compose down` (add `-v` to also delete the stored data).
 
+The container listens on the port given by the `PORT` environment variable (default `8000`), which is how cloud hosts tell an app where to listen.
+
+### Deploy (Render)
+
+The live demo runs on [Render](https://render.com)'s free tier as a **Docker web service** built directly from this repository, with:
+
+- Language: Docker, instance type: Free, region: Singapore
+- Health check path: `/health`
+- Environment variables: `PORT=10000`, `MAX_UPLOAD_MB=10`
+
+The same settings are captured in [`render.yaml`](render.yaml), so the service can also be created with **New + → Blueprint** and selecting this repository.
+
 ### Try it
 
-Once the server is running (locally at http://127.0.0.1:8000, or with Docker at http://localhost:8000):
+Once the server is running (locally at http://127.0.0.1:8000, with Docker at http://localhost:8000, or at the [live demo](#live-demo)):
 
 | URL | What it is |
 |---|---|
@@ -86,7 +112,7 @@ Once the server is running (locally at http://127.0.0.1:8000, or with Docker at 
 
 ### Web demo
 
-Open http://127.0.0.1:8000/ for a small demo page: drag and drop a KML or zipped Shapefile to see summary statistics, the features on a map (Leaflet + OpenStreetMap) and a table of measurements. Click a table row (or a shape on the map) to select it, and use **Export CSV** to download the measurements. The page supports light and dark mode and works on narrow screens.
+The demo page lets you drag and drop a KML or zipped Shapefile to see summary statistics, the features on a map (Leaflet + OpenStreetMap) and a table of measurements. Click a table row (or a shape on the map) to select it, and use **Export CSV** to download the measurements. The page supports light and dark mode and works on narrow screens.
 
 It is intentionally a single static page (plain HTML/CSS/JS, no build step) served by FastAPI, and it only uses the public API (`POST /api/files/`, `GET /api/files/{id}/measurements/?crs=EPSG:4326` and the CSV endpoint). Leaflet is loaded from a CDN, so the map needs an internet connection. User-controlled text (feature names, properties) is inserted with `textContent`, never as HTML.
 
@@ -106,12 +132,13 @@ GitHub Actions (`.github/workflows/ci.yml`) runs the test suite on every push an
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `DATABASE_URL` | `sqlite:///./geo.db` | SQLAlchemy database URL |
+| `DATABASE_URL` | `sqlite:///./geo.db` (Docker image: `sqlite:////data/geo.db`) | SQLAlchemy database URL |
 | `MAX_UPLOAD_MB` | `50` | Maximum accepted upload size |
+| `PORT` | `8000` | Port the container listens on (Docker only) |
 
 ## API
 
-On Windows PowerShell, use `curl.exe` instead of `curl` in the examples below (`curl` is an alias for a different command there).
+On Windows PowerShell, use `curl.exe` instead of `curl` in the examples below (`curl` is an alias for a different command there). The examples use a local server; replace `http://127.0.0.1:8000` with the live demo URL to try them there.
 
 ### `POST /api/files/` — upload and process a file
 
@@ -240,7 +267,7 @@ tests/                 # pytest: service-level and API-level tests
 scripts/               # Sample data generators and exploration helpers
 sample_data/           # Example KML / Shapefile inputs
 docs/                  # README screenshot
-Dockerfile, docker-compose.yml
+Dockerfile, docker-compose.yml, render.yaml
 .github/workflows/ci.yml
 ```
 
@@ -295,6 +322,7 @@ The API layer only handles HTTP concerns (validation, status codes). All geospat
 | Security | Zip-slip and zip-bomb checks, upload size limit, temp directory, no user-supplied paths, no HTML injection in the UI | Uploaded archives and the text inside them are untrusted input. |
 | Endpoint style | **Plain `def` endpoints** | GeoPandas is blocking and CPU-bound; FastAPI runs sync endpoints in a thread pool so the event loop is not blocked. |
 | Frontend | **One static page, no framework** | The task is a backend service; a build-less page keeps the demo easy to run and fully reviewable, and exercises the public API like any other client. |
+| Hosting | **Docker on Render's free tier** | The same image that runs locally and in CI is what is deployed. The free tier needs no payment details, at the cost of cold starts and ephemeral storage (see limitations). The container reads `PORT` so it works on any host. |
 
 ## Known limitations
 
@@ -304,6 +332,8 @@ The API layer only handles HTTP concerns (validation, status codes). All geospat
 - Reprojecting output with `?crs=` requires the file's CRS to be identifiable (e.g. an EPSG code); custom CRS definitions without an authority code cannot be reprojected.
 - Tables are created with `create_all` (no migrations), so a schema change requires recreating the database.
 - The demo page renders every feature; very large files (thousands of features) will be slow in the browser.
+- The hosted demo runs on a free tier with ephemeral storage, so data does not survive restarts or sleep, and old file ids will return `404`.
+- There is no rate limiting or authentication, which a public deployment would need.
 
 ## Learning and future scope
 
@@ -320,7 +350,7 @@ The API layer only handles HTTP concerns (validation, status codes). All geospat
 
 - Background processing (Celery/RQ + Redis) with polling or webhooks
 - PostgreSQL + PostGIS for spatial queries, with Alembic migrations
-- Authentication and per-user file ownership
+- Authentication, rate limiting and per-user file ownership
 - Pagination and filtering on the measurements endpoint
 - GeoJSON and GeoPackage upload support
 - Geodesic measurement option
