@@ -4,7 +4,7 @@ Upload a KML file or a zipped Shapefile and get back the area, perimeter and len
 
 **Live demo:** https://geo-measure-api-milan.onrender.com
 
-> The demo runs on a free tier and sleeps when idle, so the first load can take up to a minute.
+> The demo runs on a free tier. If it has been idle for a while, the first load can take up to a minute.
 
 ![Demo](docs/demo.png)
 
