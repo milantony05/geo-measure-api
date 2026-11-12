@@ -3,7 +3,6 @@
 Upload a KML file or a zipped Shapefile and get back the area, perimeter and length of every feature, measured accurately in a metric projection. Comes with a small web demo, a CSV export and an interactive API docs page.
 
 **Live demo:** https://geo-measure-api-milan.onrender.com
-**API docs:** https://geo-measure-api-milan.onrender.com/docs
 
 > The demo runs on a free tier and sleeps when idle, so the first load can take up to a minute.
 
